@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.egg-info/
+.venv/
+venv/
+ENV/
+
+# Node.js and build output
+node_modules/
+frontend/dist/
+frontend/dist-ssr/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Uploaded user files
+backend/uploads/*
+!backend/uploads/.gitkeep
+!backend/uploads/user-files/
+backend/uploads/user-files/*
+!backend/uploads/demo-fixtures/
+backend/uploads/demo-fixtures/*
+!backend/uploads/demo-fixtures/taskflow_sample.csv
+
+# Editor and operating system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
+
+# Frontend dependencies and builds
+node_modules/
+dist/
+coverage/
+
+# Local databases and uploaded private files
+*.sqlite3
+*.db
+uploads/
+storage/
+
+# Logs
+*.log
+
+# Editor and operating system
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
