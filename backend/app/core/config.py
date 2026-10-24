@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     app_env: str = "development"
     app_timezone: str = "UTC"
     api_prefix: str = "/api"
-    cors_origins: list[str] = ["http://localhost:5173"]
+    cors_origins: list[str] = ["http://localhost:5173, https://taskflow-seven-mocha.vercel.app/"]
     database_url_env: str | None = Field(
         default=None,
         validation_alias="DATABASE_URL",
