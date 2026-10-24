@@ -1,7 +1,5 @@
 from collections.abc import Generator
-from typing import Any
-
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import settings
@@ -12,18 +10,8 @@ engine = create_engine(
     pool_recycle=1800,
     pool_size=5,
     max_overflow=10,
+    connect_args={"connect_timeout": 10, "prepare_threshold": None},
 )
-
-
-@event.listens_for(engine, "connect")
-def set_mysql_session_timezone(
-    dbapi_connection: Any, connection_record: Any
-) -> None:
-    cursor = dbapi_connection.cursor()
-    try:
-        cursor.execute("SET time_zone = '+00:00'")
-    finally:
-        cursor.close()
 
 
 def create_session_factory(bind=engine) -> sessionmaker[Session]:

@@ -17,7 +17,6 @@ class ChatMessage(Base):
     __tablename__ = "chat_messages"
     __table_args__ = (
         Index("ix_chat_messages_conversation_created", "conversation_id", "created_at"),
-        {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -29,6 +28,8 @@ class ChatMessage(Base):
             MessageRole,
             name="message_role",
             values_callable=lambda enum: [item.value for item in enum],
+            native_enum=False,
+            create_constraint=True,
         ),
         nullable=False,
     )

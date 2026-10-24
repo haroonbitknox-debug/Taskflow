@@ -23,7 +23,6 @@ class AuditLog(Base):
     __table_args__ = (
         Index("ix_audit_logs_actor_created", "actor_id", "created_at"),
         Index("ix_audit_logs_target", "target_entity", "target_id"),
-        {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -39,6 +38,8 @@ class AuditLog(Base):
             AuditOutcome,
             name="audit_outcome",
             values_callable=lambda enum: [item.value for item in enum],
+            native_enum=False,
+            create_constraint=True,
         ),
         default=AuditOutcome.SUCCESS,
         nullable=False,

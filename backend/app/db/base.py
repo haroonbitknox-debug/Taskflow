@@ -42,5 +42,3 @@ class Base(DeclarativeBase):
             "pk": "pk_%(table_name)s",
         }
     )
-
-    __table_args__ = {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"}

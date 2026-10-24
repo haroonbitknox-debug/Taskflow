@@ -24,12 +24,7 @@ class FileIndexEntry(Base):
             name="uq_file_index_file_sheet_row_column",
         ),
         Index("ix_file_index_user_file", "user_id", "uploaded_file_id"),
-        Index(
-            "ix_file_index_user_normalized",
-            "user_id",
-            "normalized_content",
-            mysql_length={"normalized_content": 191},
-        ),
+        Index("ix_file_index_user_normalized", "user_id", "normalized_content"),
         Index(
             "ix_file_index_sheet_position",
             "user_id",
@@ -37,13 +32,6 @@ class FileIndexEntry(Base):
             "row_number",
             "column_name",
         ),
-        Index(
-            "ix_file_index_searchable_content",
-            "searchable_content",
-            "normalized_content",
-            mysql_prefix="FULLTEXT",
-        ),
-        {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

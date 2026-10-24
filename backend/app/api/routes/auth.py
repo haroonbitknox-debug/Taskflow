@@ -1,7 +1,7 @@
 import secrets
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import (
@@ -16,6 +16,9 @@ from app.schemas.auth import (
     ChangePasswordRequest,
     CsrfResponse,
     LoginRequest,
+    MessageResponse,
+    PasswordResetConfirmRequest,
+    PasswordResetRequest,
     PublicUser,
     RegisterRequest,
 )
@@ -24,6 +27,14 @@ from app.services.auth_service import (
     InvalidCredentialsError,
     authenticate_user,
     register_user,
+)
+from app.services.email_service import EmailConfigurationError
+from app.services.password_reset_service import (
+    GENERIC_RESET_MESSAGE,
+    ResetRequestRateLimitError,
+    ResetVerificationRateLimitError,
+    confirm_password_reset,
+    request_password_reset,
 )
 from app.utils.passwords import hash_password, verify_password
 from app.utils.tokens import create_access_token
@@ -138,6 +149,65 @@ def login(
     csrf_token = secrets.token_urlsafe(32)
     _set_auth_cookies(response, user, csrf_token)
     return AuthResponse(user=PublicUser.model_validate(user), message="Signed in.")
+
+
+@router.post(
+    "/password-reset/request",
+    response_model=MessageResponse,
+    dependencies=[Depends(require_csrf)],
+)
+def password_reset_request(
+    request: PasswordResetRequest,
+    http_request: Request,
+    db: Session = Depends(get_db),
+) -> MessageResponse:
+    try:
+        message = request_password_reset(
+            db,
+            request.email,
+            http_request.client.host if http_request.client else "unknown",
+        )
+    except EmailConfigurationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Password recovery email is not configured.",
+        ) from exc
+    except ResetRequestRateLimitError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many password reset requests. Please try again later.",
+        ) from exc
+    return MessageResponse(message=message)
+
+
+@router.post(
+    "/password-reset/confirm",
+    response_model=MessageResponse,
+    dependencies=[Depends(require_csrf)],
+)
+def password_reset_confirm(
+    request: PasswordResetConfirmRequest,
+    http_request: Request,
+    db: Session = Depends(get_db),
+) -> MessageResponse:
+    try:
+        confirmed = confirm_password_reset(
+            db,
+            request.token,
+            request.new_password,
+            http_request.client.host if http_request.client else "unknown",
+        )
+    except ResetVerificationRateLimitError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many reset attempts. Please try again later.",
+        ) from exc
+    if not confirmed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This password reset link is invalid or has expired.",
+        )
+    return MessageResponse(message="Your password has been reset. You can now sign in.")
 
 
 @router.post(

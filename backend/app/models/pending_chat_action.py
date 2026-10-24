@@ -11,7 +11,6 @@ class PendingChatAction(Base):
     __table_args__ = (
         Index("ix_pending_chat_actions_user_expiry", "user_id", "expires_at"),
         Index("ix_pending_chat_actions_task", "target_task_id"),
-        {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

@@ -12,6 +12,7 @@ from app.models import (
     AuditOutcome,
     ChatConversation,
     ChatMessage,
+    ChatMessage,
     MessageRole,
     PendingChatAction,
     Priority,
@@ -30,6 +31,7 @@ from app.schemas.chatbot import (
 from app.schemas.files import FileSearchHit
 from app.schemas.tasks import TaskCreate, TaskListQuery, TaskResponse, TaskUpdate
 from app.services.file_service import search_files
+from app.services.spreadsheet_chat_service import answer_spreadsheet_question
 from app.services.task_service import (
     TaskNotFoundError,
     TaskOwnerError,
@@ -358,7 +360,12 @@ def handle_message(
         else:
             response, tasks = _search_tasks_response(db, user, intent)
     elif intent.name in {"search_files", "search_spreadsheet_content"}:
-        response, files = _search_files_response(db, user, intent)
+        if intent.name == "search_spreadsheet_content":
+            response, files = answer_spreadsheet_question(
+                db, user, _redact_sensitive_text(message)
+            )
+        else:
+            response, files = _search_files_response(db, user, intent)
     elif intent.name == "create_task":
         response, pending = _prepare_task_create(db, user, conversation, intent, message)
     elif intent.name == "update_task":
@@ -380,7 +387,15 @@ def handle_message(
         assistant_message=response,
         tasks=[_task_result(task, user) for task in tasks],
         files=files,
-        search_query=intent.search_text if files else None,
+        search_query=(
+            (
+                intent.search_text
+                if intent.search_text and intent.search_text != message
+                else None
+            )
+            if intent.name == "search_spreadsheet_content"
+            else intent.search_text
+        ) if files else None,
         pending_action=pending,
     )
 

@@ -10,7 +10,6 @@ class ChatConversation(Base):
     __tablename__ = "chat_conversations"
     __table_args__ = (
         Index("ix_chat_conversations_user_updated", "user_id", "updated_at"),
-        {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

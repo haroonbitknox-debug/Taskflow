@@ -12,7 +12,6 @@ class Tag(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "name", name="uq_task_tags_user_name"),
         UniqueConstraint("user_id", "slug", name="uq_task_tags_user_slug"),
-        {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

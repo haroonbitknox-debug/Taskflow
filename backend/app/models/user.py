@@ -16,7 +16,6 @@ class User(Base):
     __tablename__ = "users"
     __table_args__ = (
         Index("ix_users_role_active", "role", "is_active"),
-        {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -28,6 +27,8 @@ class User(Base):
             UserRole,
             name="user_role",
             values_callable=lambda enum: [item.value for item in enum],
+            native_enum=False,
+            create_constraint=True,
         ),
         default=UserRole.USER,
         nullable=False,

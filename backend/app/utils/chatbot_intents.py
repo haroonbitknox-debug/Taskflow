@@ -199,7 +199,7 @@ def parse_intent(message: str) -> ParsedIntent:
         priority = _extract_priority(text) or "medium"
         return ParsedIntent("create_task", title=title, priority=priority, due_date=due_date)
 
-    if re.search(r"\b(file|files|spreadsheet|spreadsheets|excel|workbook|worksheet|sheet|rows?|cells?|invoice|customer|email)\b", lowered) and re.search(r"\b(find|search|look|which|where)\b", lowered):
+    if re.search(r"\b(file|files|spreadsheet|spreadsheets|excel|workbook|worksheet|sheet|rows?|cells?|invoice|customer|email)\b", lowered) and re.search(r"\b(find|search|look|which|where|show|list|count|total|sum|average|group|compare|how many|number of|percent(?:age)?)\b", lowered):
         intent_name = (
             "search_spreadsheet_content"
             if re.search(r"\b(spreadsheet|excel|workbook|worksheet|sheet|rows?|cells?|invoice|customer|email|contents?)\b", lowered)
@@ -209,6 +209,21 @@ def parse_intent(message: str) -> ParsedIntent:
         if not query:
             return ParsedIntent("clarify_request", clarification="What should I search for in your files?")
         return ParsedIntent(intent_name, search_text=query)
+
+    if (
+        re.search(r"\b(projects?|records?|entries|deals|invoices?)\b", lowered)
+        and not re.search(r"\btasks?\b", lowered)
+        and re.search(
+            r"\b(find|search|show|list|count|total|sum|average|group|compare|how many|number of|percent(?:age)?)\b",
+            lowered,
+        )
+    ):
+        return ParsedIntent("search_spreadsheet_content", search_text=text)
+
+    if re.search(r"\b(?:who owns|owner of)\b", lowered) and not re.search(
+        r"\btasks?\b", lowered
+    ):
+        return ParsedIntent("search_spreadsheet_content", search_text=text)
 
     if task_id is not None and re.search(r"\b(show|get|open|details?|find)\b", lowered):
         return ParsedIntent("get_task", task_id=task_id)

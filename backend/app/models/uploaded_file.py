@@ -27,7 +27,6 @@ class UploadedFile(Base):
     __table_args__ = (
         UniqueConstraint("stored_filename", name="uq_uploaded_files_stored_filename"),
         Index("ix_uploaded_files_user_created", "user_id", "created_at"),
-        {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -45,6 +44,8 @@ class UploadedFile(Base):
             FileProcessingStatus,
             name="file_processing_status",
             values_callable=lambda enum: [item.value for item in enum],
+            native_enum=False,
+            create_constraint=True,
         ),
         default=FileProcessingStatus.PENDING,
         nullable=False,

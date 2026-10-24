@@ -46,8 +46,6 @@ def upgrade() -> None:
             name="fk_pending_chat_actions_target_task_id_tasks",
             ondelete="CASCADE",
         ),
-        mysql_engine="InnoDB",
-        mysql_charset="utf8mb4",
     )
     op.create_index(
         "ix_pending_chat_actions_user_expiry",

@@ -18,6 +18,8 @@ const TaskListPage = lazy(() => import('./pages/TaskListPage.jsx'))
 const TaskFormPage = lazy(() => import('./pages/TaskFormPage.jsx'))
 const TaskDetailPage = lazy(() => import('./pages/TaskDetailPage.jsx'))
 const FilesPage = lazy(() => import('./pages/FilesPage.jsx'))
+const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage.jsx'))
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage.jsx'))
 
 function App() {
   const { user } = useAuth()
@@ -34,6 +36,8 @@ function App() {
         path="/register"
         element={user ? <Navigate to="/app" replace /> : <RegisterPage />}
       />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/unauthorized" element={<UnauthorizedPage />} />
       <Route element={<ProtectedRoute />}>
         <Route element={<DashboardLayout />}>

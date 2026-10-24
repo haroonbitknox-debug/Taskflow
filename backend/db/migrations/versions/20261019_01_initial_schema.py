@@ -1,4 +1,4 @@
-"""Create the initial TaskFlow database schema.
+"""Create the initial TaskFlow schema.
 
 Revision ID: 20261019_01
 Revises:
@@ -6,171 +6,226 @@ Create Date: 2026-10-19
 """
 
 from alembic import op
+import sqlalchemy as sa
 
 revision = "20261019_01"
 down_revision = None
 branch_labels = None
 depends_on = None
 
-CREATE_STATEMENTS = (
-    """
-    CREATE TABLE users (
-        id INTEGER NOT NULL AUTO_INCREMENT,
-        full_name VARCHAR(120) NOT NULL,
-        email VARCHAR(254) NOT NULL,
-        password_hash VARCHAR(255) NOT NULL,
-        `role` ENUM('user', 'admin') NOT NULL,
-        is_active BOOL NOT NULL,
-        created_at DATETIME NOT NULL,
-        updated_at DATETIME NOT NULL,
-        CONSTRAINT pk_users PRIMARY KEY (id),
-        CONSTRAINT uq_users_email UNIQUE (email)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    """,
-    """
-    CREATE TABLE audit_logs (
-        id INTEGER NOT NULL AUTO_INCREMENT,
-        actor_id INTEGER,
-        action_type VARCHAR(64) NOT NULL,
-        target_entity VARCHAR(64) NOT NULL,
-        target_id VARCHAR(64),
-        change_summary JSON,
-        outcome ENUM('success', 'failure') NOT NULL,
-        created_at DATETIME NOT NULL,
-        CONSTRAINT pk_audit_logs PRIMARY KEY (id),
-        CONSTRAINT fk_audit_logs_actor_id_users
-            FOREIGN KEY (actor_id) REFERENCES users (id) ON DELETE SET NULL
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    """,
-    """
-    CREATE TABLE chat_conversations (
-        id INTEGER NOT NULL AUTO_INCREMENT,
-        user_id INTEGER NOT NULL,
-        title VARCHAR(200),
-        created_at DATETIME NOT NULL,
-        updated_at DATETIME NOT NULL,
-        CONSTRAINT pk_chat_conversations PRIMARY KEY (id),
-        CONSTRAINT fk_chat_conversations_user_id_users
-            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    """,
-    """
-    CREATE TABLE task_tags (
-        id INTEGER NOT NULL AUTO_INCREMENT,
-        user_id INTEGER NOT NULL,
-        name VARCHAR(64) NOT NULL,
-        slug VARCHAR(80) NOT NULL,
-        created_at DATETIME NOT NULL,
-        CONSTRAINT pk_task_tags PRIMARY KEY (id),
-        CONSTRAINT uq_task_tags_user_name UNIQUE (user_id, name),
-        CONSTRAINT uq_task_tags_user_slug UNIQUE (user_id, slug),
-        CONSTRAINT fk_task_tags_user_id_users
-            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    """,
-    """
-    CREATE TABLE tasks (
-        id INTEGER NOT NULL AUTO_INCREMENT,
-        user_id INTEGER NOT NULL,
-        title VARCHAR(200) NOT NULL,
-        description TEXT,
-        status ENUM('pending', 'in_progress', 'completed') NOT NULL,
-        priority ENUM('low', 'medium', 'high') NOT NULL,
-        category VARCHAR(80),
-        due_date DATETIME,
-        completed_at DATETIME,
-        created_at DATETIME NOT NULL,
-        updated_at DATETIME NOT NULL,
-        CONSTRAINT pk_tasks PRIMARY KEY (id),
-        CONSTRAINT fk_tasks_user_id_users
-            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    """,
-    """
-    CREATE TABLE uploaded_files (
-        id INTEGER NOT NULL AUTO_INCREMENT,
-        user_id INTEGER NOT NULL,
-        original_filename VARCHAR(255) NOT NULL,
-        stored_filename VARCHAR(255) NOT NULL,
-        relative_path VARCHAR(512) NOT NULL,
-        extension VARCHAR(16) NOT NULL,
-        mime_type VARCHAR(127) NOT NULL,
-        file_size BIGINT NOT NULL,
-        processing_status ENUM('pending', 'processing', 'ready', 'failed') NOT NULL,
-        created_at DATETIME NOT NULL,
-        updated_at DATETIME NOT NULL,
-        CONSTRAINT pk_uploaded_files PRIMARY KEY (id),
-        CONSTRAINT uq_uploaded_files_stored_filename UNIQUE (stored_filename),
-        CONSTRAINT fk_uploaded_files_user_id_users
-            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    """,
-    """
-    CREATE TABLE chat_messages (
-        id INTEGER NOT NULL AUTO_INCREMENT,
-        conversation_id INTEGER NOT NULL,
-        `role` ENUM('system', 'user', 'assistant') NOT NULL,
-        content TEXT NOT NULL,
-        created_at DATETIME NOT NULL,
-        CONSTRAINT pk_chat_messages PRIMARY KEY (id),
-        CONSTRAINT fk_chat_messages_conversation_id_chat_conversations
-            FOREIGN KEY (conversation_id)
-            REFERENCES chat_conversations (id) ON DELETE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    """,
-    """
-    CREATE TABLE file_index_entries (
-        id INTEGER NOT NULL AUTO_INCREMENT,
-        uploaded_file_id INTEGER NOT NULL,
-        user_id INTEGER NOT NULL,
-        worksheet_name VARCHAR(128) NOT NULL,
-        `row_number` INTEGER NOT NULL,
-        column_name VARCHAR(64) NOT NULL,
-        searchable_content TEXT NOT NULL,
-        normalized_content VARCHAR(512) NOT NULL,
-        created_at DATETIME NOT NULL,
-        CONSTRAINT pk_file_index_entries PRIMARY KEY (id),
-        CONSTRAINT uq_file_index_file_sheet_row_column
-            UNIQUE (
-                uploaded_file_id, worksheet_name, `row_number`, column_name
-            ),
-        CONSTRAINT fk_file_index_entries_uploaded_file_id_uploaded_files
-            FOREIGN KEY (uploaded_file_id)
-            REFERENCES uploaded_files (id) ON DELETE CASCADE,
-        CONSTRAINT fk_file_index_entries_user_id_users
-            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    """,
-    """
-    CREATE TABLE task_tag_associations (
-        task_id INTEGER NOT NULL,
-        tag_id INTEGER NOT NULL,
-        CONSTRAINT pk_task_tag_associations PRIMARY KEY (task_id, tag_id),
-        CONSTRAINT fk_task_tag_associations_task_id_tasks
-            FOREIGN KEY (task_id) REFERENCES tasks (id) ON DELETE CASCADE,
-        CONSTRAINT fk_task_tag_associations_tag_id_task_tags
-            FOREIGN KEY (tag_id) REFERENCES task_tags (id) ON DELETE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    """,
-    "CREATE INDEX ix_users_role_active ON users (`role`, is_active)",
-    "CREATE INDEX ix_audit_logs_actor_created ON audit_logs (actor_id, created_at)",
-    "CREATE INDEX ix_audit_logs_target ON audit_logs (target_entity, target_id)",
-    "CREATE INDEX ix_chat_conversations_user_updated ON chat_conversations (user_id, updated_at)",
-    "CREATE INDEX ix_tasks_user_category ON tasks (user_id, category)",
-    "CREATE INDEX ix_tasks_user_priority ON tasks (user_id, priority)",
-    "CREATE INDEX ix_tasks_user_status_due ON tasks (user_id, status, due_date)",
-    "CREATE INDEX ix_uploaded_files_user_created ON uploaded_files (user_id, created_at)",
-    "CREATE INDEX ix_chat_messages_conversation_created ON chat_messages (conversation_id, created_at)",
-    "CREATE FULLTEXT INDEX ix_file_index_searchable_content ON file_index_entries (searchable_content, normalized_content)",
-    "CREATE INDEX ix_file_index_sheet_position ON file_index_entries (user_id, worksheet_name, `row_number`, column_name)",
-    "CREATE INDEX ix_file_index_user_file ON file_index_entries (user_id, uploaded_file_id)",
-    "CREATE INDEX ix_file_index_user_normalized ON file_index_entries (user_id, normalized_content(191))",
-)
+
+def _enum(name: str, *values: str) -> sa.Enum:
+    return sa.Enum(
+        *values,
+        name=name,
+        native_enum=False,
+        create_constraint=True,
+    )
 
 
 def upgrade() -> None:
-    for statement in CREATE_STATEMENTS:
-        op.execute(statement)
+    op.create_table(
+        "users",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("full_name", sa.String(120), nullable=False),
+        sa.Column("email", sa.String(254), nullable=False),
+        sa.Column("password_hash", sa.String(255), nullable=False),
+        sa.Column("role", _enum("user_role", "user", "admin"), nullable=False),
+        sa.Column("is_active", sa.Boolean(), nullable=False),
+        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(), nullable=False),
+        sa.PrimaryKeyConstraint("id", name="pk_users"),
+        sa.UniqueConstraint("email", name="uq_users_email"),
+    )
+    op.create_index("ix_users_role_active", "users", ["role", "is_active"])
+
+    op.create_table(
+        "audit_logs",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("actor_id", sa.Integer(), nullable=True),
+        sa.Column("action_type", sa.String(64), nullable=False),
+        sa.Column("target_entity", sa.String(64), nullable=False),
+        sa.Column("target_id", sa.String(64), nullable=True),
+        sa.Column("change_summary", sa.JSON(), nullable=True),
+        sa.Column("outcome", _enum("audit_outcome", "success", "failure"), nullable=False),
+        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["actor_id"], ["users.id"], name="fk_audit_logs_actor_id_users",
+            ondelete="SET NULL",
+        ),
+        sa.PrimaryKeyConstraint("id", name="pk_audit_logs"),
+    )
+    op.create_index("ix_audit_logs_actor_created", "audit_logs", ["actor_id", "created_at"])
+    op.create_index("ix_audit_logs_target", "audit_logs", ["target_entity", "target_id"])
+
+    op.create_table(
+        "chat_conversations",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("user_id", sa.Integer(), nullable=False),
+        sa.Column("title", sa.String(200), nullable=True),
+        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["user_id"], ["users.id"], name="fk_chat_conversations_user_id_users",
+            ondelete="CASCADE",
+        ),
+        sa.PrimaryKeyConstraint("id", name="pk_chat_conversations"),
+    )
+    op.create_index(
+        "ix_chat_conversations_user_updated",
+        "chat_conversations",
+        ["user_id", "updated_at"],
+    )
+
+    op.create_table(
+        "task_tags",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("user_id", sa.Integer(), nullable=False),
+        sa.Column("name", sa.String(64), nullable=False),
+        sa.Column("slug", sa.String(80), nullable=False),
+        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["user_id"], ["users.id"], name="fk_task_tags_user_id_users",
+            ondelete="CASCADE",
+        ),
+        sa.PrimaryKeyConstraint("id", name="pk_task_tags"),
+        sa.UniqueConstraint("user_id", "name", name="uq_task_tags_user_name"),
+        sa.UniqueConstraint("user_id", "slug", name="uq_task_tags_user_slug"),
+    )
+
+    op.create_table(
+        "tasks",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("user_id", sa.Integer(), nullable=False),
+        sa.Column("title", sa.String(200), nullable=False),
+        sa.Column("description", sa.Text(), nullable=True),
+        sa.Column(
+            "status",
+            _enum("task_status", "pending", "in_progress", "completed"),
+            nullable=False,
+        ),
+        sa.Column("priority", _enum("task_priority", "low", "medium", "high"), nullable=False),
+        sa.Column("category", sa.String(80), nullable=True),
+        sa.Column("due_date", sa.DateTime(), nullable=True),
+        sa.Column("completed_at", sa.DateTime(), nullable=True),
+        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["user_id"], ["users.id"], name="fk_tasks_user_id_users",
+            ondelete="CASCADE",
+        ),
+        sa.PrimaryKeyConstraint("id", name="pk_tasks"),
+    )
+    op.create_index("ix_tasks_user_category", "tasks", ["user_id", "category"])
+    op.create_index("ix_tasks_user_priority", "tasks", ["user_id", "priority"])
+    op.create_index(
+        "ix_tasks_user_status_due", "tasks", ["user_id", "status", "due_date"]
+    )
+
+    op.create_table(
+        "uploaded_files",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("user_id", sa.Integer(), nullable=False),
+        sa.Column("original_filename", sa.String(255), nullable=False),
+        sa.Column("stored_filename", sa.String(255), nullable=False),
+        sa.Column("relative_path", sa.String(512), nullable=False),
+        sa.Column("extension", sa.String(16), nullable=False),
+        sa.Column("mime_type", sa.String(127), nullable=False),
+        sa.Column("file_size", sa.BigInteger(), nullable=False),
+        sa.Column(
+            "processing_status",
+            _enum("file_processing_status", "pending", "processing", "ready", "failed"),
+            nullable=False,
+        ),
+        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["user_id"], ["users.id"], name="fk_uploaded_files_user_id_users",
+            ondelete="CASCADE",
+        ),
+        sa.PrimaryKeyConstraint("id", name="pk_uploaded_files"),
+        sa.UniqueConstraint("stored_filename", name="uq_uploaded_files_stored_filename"),
+    )
+    op.create_index(
+        "ix_uploaded_files_user_created", "uploaded_files", ["user_id", "created_at"]
+    )
+
+    op.create_table(
+        "chat_messages",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("conversation_id", sa.Integer(), nullable=False),
+        sa.Column("role", _enum("message_role", "system", "user", "assistant"), nullable=False),
+        sa.Column("content", sa.Text(), nullable=False),
+        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["conversation_id"], ["chat_conversations.id"],
+            name="fk_chat_messages_conversation_id_chat_conversations",
+            ondelete="CASCADE",
+        ),
+        sa.PrimaryKeyConstraint("id", name="pk_chat_messages"),
+    )
+    op.create_index(
+        "ix_chat_messages_conversation_created",
+        "chat_messages",
+        ["conversation_id", "created_at"],
+    )
+
+    op.create_table(
+        "file_index_entries",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("uploaded_file_id", sa.Integer(), nullable=False),
+        sa.Column("user_id", sa.Integer(), nullable=False),
+        sa.Column("worksheet_name", sa.String(128), nullable=False),
+        sa.Column("row_number", sa.Integer(), nullable=False),
+        sa.Column("column_name", sa.String(64), nullable=False),
+        sa.Column("searchable_content", sa.Text(), nullable=False),
+        sa.Column("normalized_content", sa.String(512), nullable=False),
+        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["uploaded_file_id"], ["uploaded_files.id"],
+            name="fk_file_index_entries_uploaded_file_id_uploaded_files",
+            ondelete="CASCADE",
+        ),
+        sa.ForeignKeyConstraint(
+            ["user_id"], ["users.id"], name="fk_file_index_entries_user_id_users",
+            ondelete="CASCADE",
+        ),
+        sa.PrimaryKeyConstraint("id", name="pk_file_index_entries"),
+        sa.UniqueConstraint(
+            "uploaded_file_id", "worksheet_name", "row_number", "column_name",
+            name="uq_file_index_file_sheet_row_column",
+        ),
+    )
+    op.create_index(
+        "ix_file_index_user_file", "file_index_entries", ["user_id", "uploaded_file_id"]
+    )
+    op.create_index(
+        "ix_file_index_user_normalized",
+        "file_index_entries",
+        ["user_id", "normalized_content"],
+    )
+    op.create_index(
+        "ix_file_index_sheet_position",
+        "file_index_entries",
+        ["user_id", "worksheet_name", "row_number", "column_name"],
+    )
+
+    op.create_table(
+        "task_tag_associations",
+        sa.Column("task_id", sa.Integer(), nullable=False),
+        sa.Column("tag_id", sa.Integer(), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["task_id"], ["tasks.id"],
+            name="fk_task_tag_associations_task_id_tasks",
+            ondelete="CASCADE",
+        ),
+        sa.ForeignKeyConstraint(
+            ["tag_id"], ["task_tags.id"],
+            name="fk_task_tag_associations_tag_id_task_tags",
+            ondelete="CASCADE",
+        ),
+        sa.PrimaryKeyConstraint("task_id", "tag_id", name="pk_task_tag_associations"),
+    )
 
 
 def downgrade() -> None:
@@ -185,4 +240,4 @@ def downgrade() -> None:
         "audit_logs",
         "users",
     ):
-        op.execute(f"DROP TABLE {table}")
+        op.drop_table(table)

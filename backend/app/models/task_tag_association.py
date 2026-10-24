@@ -17,6 +17,4 @@ task_tag_associations = Table(
         ForeignKey("task_tags.id", ondelete="CASCADE"),
         primary_key=True,
     ),
-    mysql_engine="InnoDB",
-    mysql_charset="utf8mb4",
 )

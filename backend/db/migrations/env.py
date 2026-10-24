@@ -17,7 +17,10 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 config.set_main_option(
-    "sqlalchemy.url", settings.database_url_string.replace("%", "%%")
+    "sqlalchemy.url",
+    settings.migration_database_url.render_as_string(hide_password=False).replace(
+        "%", "%%"
+    ),
 )
 
 target_metadata = Base.metadata
@@ -40,6 +43,7 @@ def run_migrations_online() -> None:
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args={"prepare_threshold": None, "connect_timeout": 10},
     )
 
     with connectable.connect() as connection:

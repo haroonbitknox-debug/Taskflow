@@ -41,6 +41,31 @@ class LoginRequest(BaseModel):
         return value
 
 
+class PasswordResetRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: EmailAddress
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        value = value.casefold()
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", value):
+            raise ValueError("Enter a valid email address.")
+        return value
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    token: Annotated[str, StringConstraints(min_length=32, max_length=256)]
+    new_password: Password
+
+
+class MessageResponse(BaseModel):
+    message: str
+
+
 class PublicUser(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

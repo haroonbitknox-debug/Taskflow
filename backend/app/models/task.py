@@ -26,7 +26,6 @@ class Task(Base):
         Index("ix_tasks_user_status_due", "user_id", "status", "due_date"),
         Index("ix_tasks_user_priority", "user_id", "priority"),
         Index("ix_tasks_user_category", "user_id", "category"),
-        {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -40,6 +39,8 @@ class Task(Base):
             TaskStatus,
             name="task_status",
             values_callable=lambda enum: [item.value for item in enum],
+            native_enum=False,
+            create_constraint=True,
         ),
         default=TaskStatus.PENDING,
         nullable=False,
@@ -49,6 +50,8 @@ class Task(Base):
             Priority,
             name="task_priority",
             values_callable=lambda enum: [item.value for item in enum],
+            native_enum=False,
+            create_constraint=True,
         ),
         default=Priority.MEDIUM,
         nullable=False,

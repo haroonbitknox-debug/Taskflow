@@ -17,6 +17,7 @@ from app.services.chatbot_service import (
     get_conversation_history,
     handle_message,
 )
+from app.services.spreadsheet_chat_service import SpreadsheetChatError
 
 router = APIRouter(prefix="/chat", tags=["chatbot"])
 
@@ -41,6 +42,9 @@ def send_message(
     except ChatAccessError as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except SpreadsheetChatError as exc:
+        db.rollback()
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     except (ValueError, TypeError) as exc:
         db.rollback()
         raise HTTPException(status_code=422, detail=str(exc)) from exc

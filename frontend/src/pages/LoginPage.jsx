@@ -54,7 +54,12 @@ function LoginPage() {
           />
         </label>
         <label className="block space-y-2 text-sm font-medium text-slate-700">
-          Password
+          <span className="flex items-center justify-between">
+            Password
+            <Link className="font-medium text-indigo-700 hover:text-indigo-900" to="/forgot-password">
+              Forgot password?
+            </Link>
+          </span>
           <input
             autoComplete="current-password"
             className="w-full rounded-lg border border-slate-300 px-3 py-2.5 font-normal outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"

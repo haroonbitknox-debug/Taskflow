@@ -1,8 +1,9 @@
 # TaskFlow
 
 TaskFlow is a local full-stack task-management application with a React/Vite
-frontend, FastAPI backend, and MySQL database. It includes cookie-based
-authentication, role-based access control, task and user management, private
+frontend, FastAPI backend, and PostgreSQL database (including Neon). It
+includes cookie-based authentication, role-based access control, task and user
+management, private
 spreadsheet upload/index/search, dashboards, and a chatbot that requires
 explicit confirmation before it changes tasks.
 
@@ -11,39 +12,23 @@ explicit confirmation before it changes tasks.
 - Windows 10/11 and VS Code with PowerShell
 - Python 3.10 or newer and `py` (the tested environment uses Python 3.12)
 - Node.js 20.19 or newer and npm
-- A local MySQL or MariaDB server on port 3306
-- phpMyAdmin, if desired, for local database administration
+- A PostgreSQL database such as Neon, or local PostgreSQL for development
 
-This project uses MySQL through PyMySQL. It does not require Docker, SQLite, or
-a remote database. phpMyAdmin is a separate local administration tool and is
-not required to run the application.
+The application uses SQLAlchemy with psycopg. The optional one-time MariaDB
+data-copy utility uses PyMySQL; it does not change the source database.
 
 ## Local setup and startup
 
-### 1. Start MySQL and create the database
+### 1. Create a Neon database
 
-Start MySQL from the local XAMPP/WAMP control panel, or start the installed
-Windows service from an elevated PowerShell terminal. To discover its service
-name:
-
-```powershell
-Get-Service | Where-Object {
-    $_.Name -match "mysql|maria" -or $_.DisplayName -match "mysql|maria"
-}
-```
-
-If the service is present but stopped, start it using its actual service name,
-for example `Start-Service MySQL80`. Verify that port 3306 is listening:
-
-```powershell
-Test-NetConnection 127.0.0.1 -Port 3306
-```
-
-Open the phpMyAdmin URL configured by your local installation. On the
-environment used for this verification, <http://127.0.0.1/phpmyadmin/> returns
-HTTP 200; XAMPP/WAMP installations may use another local URL. In phpMyAdmin,
-create a database named `taskflow_db` with `utf8mb4_unicode_ci` collation.
-Migrations create the tables; do not create them manually.
+Create a Neon project and database in the Neon console. Use the pooled
+connection string for application traffic and the direct connection string for
+migrations/admin tasks. The backend loads `backend/.env` and the root
+`.env.local`; process environment variables take precedence over both.
+`neon deploy` can populate the root `.env.local` with `DATABASE_URL` and
+`DATABASE_URL_UNPOOLED`. The configuration upgrades Neon `sslmode=require` to
+`verify-full`, using the `certifi` root CA bundle when no custom certificate
+path is specified; certificate and hostname verification remain enabled.
 
 ### 2. Configure and start FastAPI
 
@@ -61,12 +46,13 @@ if (-not (Test-Path .env)) {
 }
 ```
 
-Edit `backend/.env` and set the actual local MySQL credentials. In particular,
-change `DB_PASSWORD` if the MySQL account has a password. Keep this file
-private. The checked-in `.env.example` defaults to the local database
-`taskflow_db`, root user, and no password; those are examples, not universal
-MySQL credentials. The development configuration has a development-only
-fallback JWT key. For a local custom key, generate one with
+When using Neon CLI, keep its generated `.env.local` private and do not copy
+credentials into frontend files. Otherwise, set `DATABASE_URL` in
+`backend/.env`; set `DATABASE_URL_UNPOOLED` there as well when using a distinct
+direct URL for migrations. Keep both files private. For local PostgreSQL only, a local URL may use
+`sslmode=disable`; non-local databases always use verified TLS. The checked-in
+`.env.example` contains placeholders. The development configuration has a
+development-only fallback JWT key. For a local custom key, generate one with
 `python -c "import secrets; print(secrets.token_urlsafe(48))"` and set
 `JWT_SECRET_KEY` in `backend/.env`. Never use the development fallback in
 production.
@@ -117,7 +103,6 @@ Service URLs:
 - Backend root health response: <http://localhost:8000/>
 - API health: <http://localhost:8000/api/health>
 - Swagger UI: <http://localhost:8000/docs>
-- phpMyAdmin: the URL configured by the local installation
 
 The home page's API health card calls the real backend health endpoint.
 
@@ -136,8 +121,8 @@ duplicate demo users, tasks, tags, or index entries. It creates six accounts,
 | Other regular users | `jordan@taskflow.local`, `sam@taskflow.local`, `taylor@taskflow.local`, `casey@taskflow.local` | `TaskFlow-User-Dev-2026!` |
 
 These public credentials are local development fixtures only. Do not use them
-on an exposed or production installation. Do not run the seeder against
-`taskflow_test_db`; the automated test suite expects a clean test database.
+on an exposed or production installation. Do not run the seeder against the
+dedicated test database; the automated test suite expects it to remain clean.
 
 ## Project structure and dependencies
 
@@ -181,7 +166,8 @@ TaskFlow/
 ```
 
 Backend dependencies are declared in `backend/requirements.txt`: FastAPI,
-Uvicorn, SQLAlchemy, Pydantic Settings, Alembic, PyMySQL, Argon2, PyJWT,
+Uvicorn, SQLAlchemy, Pydantic Settings, Alembic, psycopg, PyMySQL (legacy-data
+migration only), Argon2, PyJWT,
 pandas, openpyxl, xlrd, python-multipart, and pytest/httpx for tests.
 Frontend dependencies are in `frontend/package.json`: React, Vite, React
 Router, Axios, Tailwind CSS, Lucide React, Recharts, and oxlint.
@@ -261,6 +247,8 @@ memory. On page reload it restores the user by calling `/api/auth/me`.
 
 - `POST /api/auth/register` — create a regular user; public admin assignment is rejected.
 - `POST /api/auth/login` — authenticate and issue the HttpOnly access cookie.
+- `POST /api/auth/password-reset/request` — request email reset instructions without revealing whether the account exists.
+- `POST /api/auth/password-reset/confirm` — set a new password using a valid, single-use reset token.
 - `POST /api/auth/logout` — clear authentication cookies.
 - `GET /api/auth/me` — get the authenticated active user.
 - `POST /api/auth/change-password` — change a password after verifying the current one; signs out.
@@ -357,18 +345,56 @@ is not malformed or macro-enabled, and check the configured size/row/column/
 worksheet/text/time limits. If indexing fails after upload, verify that the
 file is a valid spreadsheet and use **Retry indexing**. If the API cannot
 create its storage directory, ensure its process account can write to the
-configured `UPLOAD_STORAGE_DIR`. MySQL must be migrated to the current head
-before using file APIs.
+configured `UPLOAD_STORAGE_DIR`. Apply the current Alembic migrations before
+using file APIs.
 
 ## Phase 7 chatbot
 
 The authenticated layout includes a responsive floating assistant. It uses
-deterministic request parsing and existing task CRUD and file-index search
-services; no external LLM or paid API key is required. Relative dates are
-interpreted with `APP_TIMEZONE` (an IANA timezone such as `UTC` or
-`America/New_York`). “Today” and “tomorrow” mean the end of that local date;
-task searches for “next week” cover the next Monday through Sunday. A task
-creation due “next week” is ambiguous and prompts for a specific day.
+deterministic request parsing and existing task CRUD services. Spreadsheet
+questions use OpenRouter's Chat Completions API to interpret a restricted query
+plan and summarize results from the authenticated user's existing file index.
+Spreadsheet filtering and calculations run in the backend; the model never
+receives unrestricted database access. Relative dates are interpreted with
+`APP_TIMEZONE` (an IANA timezone such as `UTC` or `America/New_York`). “Today”
+and “tomorrow” mean the end of that local date; task searches for “next week”
+cover the next Monday through Sunday. A task creation due “next week” is
+ambiguous and prompts for a specific day.
+
+Configure OpenRouter in `backend/.env`:
+
+```dotenv
+OPENROUTER_API_KEY=your_server_side_key
+OPENROUTER_MODEL=your_selected_model_id
+OPENROUTER_TIMEOUT_SECONDS=30
+OPENROUTER_MAX_TOKENS=1200
+```
+
+Choose a model ID that is currently available to your OpenRouter account; the
+project does not select a default model or assume that a model is free. Review
+the model's provider, data handling, context/token limits, and pricing before
+use. Spreadsheet prompts (with common credential patterns redacted), column
+names, and only matching row data are sent to OpenRouter for interpretation or
+answer generation. The backend returns clear
+errors when configuration is missing or the provider fails; it does not
+generate a fallback answer. Keep the key only in the backend environment:
+never add it to frontend `VITE_` variables, browser storage, source control, or
+client responses. The checked-in `.env.example` contains blank placeholders.
+`httpx` is already a backend dependency and is reused by the integration.
+If a request fails, the backend log records only the upstream status, configured
+model ID, provider error code when supplied, and a sanitized provider message.
+The API returns a safe category-specific explanation instead of provider
+details or stack traces. Authentication, account-credit, permission, invalid
+model/request, rate-limit, and provider-server failures have distinct messages;
+check backend logs for the corresponding diagnostic category. Spreadsheet
+values and the OpenRouter key are redacted from logged provider errors.
+
+For a backend-only test run that does not require PostgreSQL or paid API calls:
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m pytest -q tests\test_spreadsheet_chat_service.py
+```
 
 Supported chat request examples:
 
@@ -377,6 +403,9 @@ Supported chat request examples:
 - `Which tasks are overdue?`
 - `Find task ID 788.`
 - `Search my Excel files for invoice number 1045.`
+- `Show high-priority projects that are still pending.`
+- `How many pending records?`
+- `Sum Amount for pending projects.`
 - `Which worksheet contains customer ABC?`
 - `Create a high-priority task called Submit NLP Report, due tomorrow.`
 - `Change task 25's priority to high.`
@@ -405,12 +434,16 @@ API endpoints:
 
 Mutations reuse the task services and are committed with chatbot audit entries.
 Conversation records store the user request (with common credential patterns
-redacted) and a short generic assistant response; file excerpts and opaque
-confirmation challenges are not copied into conversation messages. Spreadsheet
-cell values are treated as untrusted text and cannot supply commands or change
-the parser's permissions. This release intentionally does not use an external
-LLM; if one is added later, it must remain optional, use schema-constrained
-intent output, and disclose that user prompts may be sent to the provider.
+redacted) and a short assistant response; file excerpts and opaque confirmation
+challenges are not copied into conversation messages. Spreadsheet cell values
+are treated as untrusted text and cannot supply commands or change the parser's
+permissions. The model can select only validated filter and calculation
+operations. The backend derives the user identity from the existing
+authentication dependency, scopes every index query to that user, and returns
+source filenames, worksheets, and row references when available. Results are
+bounded; questions exceeding the safe retrieval limit ask for narrower filters.
+Task creation, updates, and deletions remain deterministic, use existing task
+services, and still require explicit confirmation.
 
 Apply the Phase 7 pending-action migration before using the chatbot:
 
@@ -421,82 +454,157 @@ alembic upgrade head
 alembic current
 ```
 
-The chatbot schema reference remains `backend/db/schema.sql`. Tests require the
-separate `taskflow_test_db`; enable them only using the isolated-test settings
+The schema is managed by Alembic. Tests require a separate PostgreSQL database;
+enable them only using the isolated-test settings
 described above.
+
+Spreadsheet answers include source cards in the chat for matching rows. Manual
+UI checks after configuration:
+
+1. Ask `Show high-priority projects that are still pending.` and verify only
+   matching rows appear with their source filename, worksheet, and row.
+2. Ask for a pending-record count and a sum over a numeric column; compare the
+   results with the uploaded sheet.
+3. Ask about a column that does not exist and verify the assistant reports the
+   missing field instead of guessing.
+4. Put instruction-like text in a spreadsheet cell and verify it is treated as
+   cell content, not followed.
+5. Try an unavailable model or unset the backend key and verify an explicit
+   error appears while ordinary task search and confirmation still work.
 
 ## Run backend tests
 
-Tests use a dedicated MySQL database and are disabled unless explicitly enabled.
-Create a separate `taskflow_test_db` database in phpMyAdmin. Apply migrations
-to that test database before running tests; never point these commands at the
-development database. In `backend/.env`, set `APP_ENV=development` and your
-local test-database credentials (the seeder is not needed for tests). From
+Password recovery and spreadsheet chat tests use isolated in-memory SQLite
+databases and mocked email/provider calls. The optional broader integration
+suite uses a separate PostgreSQL test database and is disabled unless enabled
+explicitly. Never run it against the development or production database. From
 PowerShell:
 
 ```powershell
 cd backend
 .\.venv\Scripts\Activate.ps1
-$env:DB_NAME = "taskflow_test_db"
+$env:TASKFLOW_TEST_DATABASE_URL = "postgresql://USER:PASSWORD@HOST/taskflow_test?sslmode=require"
+$env:DATABASE_URL = $env:TASKFLOW_TEST_DATABASE_URL
 alembic upgrade head
-$env:DB_NAME = "taskflow_db"
-$env:TASKFLOW_TEST_DB_NAME = "taskflow_test_db"
 $env:TASKFLOW_RUN_AUTH_TESTS = "1"
 pytest -q
-Remove-Item Env:TASKFLOW_TEST_DB_NAME
+Remove-Item Env:TASKFLOW_TEST_DATABASE_URL
 Remove-Item Env:TASKFLOW_RUN_AUTH_TESTS
 ```
 
-`DB_NAME` is restored to the development database name before pytest so the
-fixture can detect accidental targeting of the development database. Tests
-connect only to `TASKFLOW_TEST_DB_NAME`; never set it equal to `DB_NAME`.
-To check schema drift explicitly against the test database:
+The test fixture refuses to run if the test URL equals the configured
+application database. To check schema drift, set `DATABASE_URL` to the
+dedicated test database and run:
 
 ```powershell
-$env:DB_NAME = "taskflow_test_db"
 alembic check
-$env:DB_NAME = "taskflow_db"
 ```
 
-The test fixture creates any missing test tables in `TASKFLOW_TEST_DB_NAME`
-and rolls back each test's data changes. It checks that this name differs from
-`DB_NAME` before connecting and never targets the development database. Do not
-seed this test database: several assertions intentionally expect no demo
-records.
+The fixture creates test tables and rolls back each test's data changes. Do not
+seed the test database: several assertions intentionally expect no demo data.
 
 The test command reports skipped authentication tests when the opt-in
 variables are absent; a skipped run is not a full passing test run.
 
-## Database backup and reset
+## MariaDB to Neon data migration
 
-Before any reset, stop both application servers and make a database backup
-using phpMyAdmin's **Export** tab (choose SQL) or your MySQL administrator's
-backup tool. Keep a separate copy of `backend/uploads/` as it contains uploaded
-file binaries that are not stored in MySQL. Verify that both backups can be
-read before proceeding.
+The source MariaDB instance was not reachable during preparation (no process
+was listening on port 3306). The pasted XAMPP log also shows Aria recovery and
+`mysql.plugin` initialization failures, so **no source export or data migration
+has been performed**. The provided copy utility reads from MariaDB and writes
+to an empty PostgreSQL database only after migrations have been applied. It checks
+all TaskFlow table counts, lets PostgreSQL enforce foreign keys, and updates
+generated-ID sequences. It refuses to write if the target is not empty.
 
-To reset a disposable local development database only, use phpMyAdmin to drop
-and recreate `taskflow_db` with `utf8mb4_unicode_ci`, then, from `backend/`:
+Never delete, replace, or attempt recovery directly inside
+`C:\xampp\mysql\data`. First stop MySQL and make a separate, complete copy of
+that directory. If you later recover the original server, create a logical
+backup before migration (run from PowerShell; keep the dump private):
 
 ```powershell
-.\.venv\Scripts\Activate.ps1
-alembic upgrade head
-python -m db.seeders.seed_demo
+New-Item -ItemType Directory -Path 'D:\Backups' -Force | Out-Null
+& 'C:\xampp\mysql\bin\mysqldump.exe' --single-transaction --routines --triggers --events --default-character-set=utf8mb4 -h 127.0.0.1 -P 3306 -u root -p taskflow_db --result-file='D:\Backups\taskflow-mariadb.sql'
 ```
 
-Dropping database tables does not remove uploaded file binaries from disk.
-Preserve the uploads backup and clean private files only as a separate,
-intentional operation after confirming the selected storage directory. Never
-reset the development database as a way to run tests; use
-`taskflow_test_db` instead.
+If the export succeeds, keep it as a rollback/archive artifact. To copy the live
+source rows into Neon, first apply the PostgreSQL schema to an empty target and
+run the read-only source-to-target copier from `backend/`:
+
+```powershell
+$env:DATABASE_URL = 'postgresql://USER:PASSWORD@HOST/DATABASE?sslmode=require'
+$env:SOURCE_DATABASE_URL = 'mysql+pymysql://USER:PASSWORD@127.0.0.1:3306/taskflow_db?charset=utf8mb4'
+alembic upgrade head
+python -m scripts.migrate_mysql_to_postgres --dry-run
+python -m scripts.migrate_mysql_to_postgres
+Remove-Item Env:SOURCE_DATABASE_URL
+```
+
+Use URL-encoded credentials if a password contains URL-reserved characters.
+The copy utility does not read the SQL dump; it requires the source MariaDB
+server to be running and its source URL to be available. `--dry-run` checks
+source tables, reports source row counts, and confirms target tables are empty
+without copying anything. The real run is one PostgreSQL transaction; row-count
+or relationship failures roll it back. Uploaded file binaries are not in the
+database: also copy `backend/uploads/user-files` to the deployment's configured
+storage, preserving paths and access controls. Reconcile important records
+and keep both the SQL export and the original MariaDB files until application
+behavior and counts are verified.
+
+## Password recovery and email delivery
+
+The sign-in page links to `/forgot-password`; reset links point to
+`APP_BASE_URL/reset-password`. The API stores only a hash of the random,
+single-use token, expires it after `PASSWORD_RESET_TOKEN_EXPIRE_MINUTES`, and
+uses database-backed request and IP rate limits. Unknown and known email
+addresses receive the same response. Requests require a configured mail
+provider: set `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`,
+`MAIL_FROM`, and `APP_BASE_URL` in the backend environment. STARTTLS with
+certificate verification is enabled by default on port 587. For implicit TLS
+providers, set `MAIL_USE_SSL=true` and `MAIL_STARTTLS=false`. These mail values
+are server-only; never add them to `frontend/.env`.
+
+For local testing, configure a development SMTP account/provider and
+`APP_BASE_URL=http://localhost:5173`, then request a reset for a test user.
+Without a configured provider the endpoint returns a configuration error; a
+successful response is not evidence of inbox delivery. Provider delivery
+failures are recorded in backend logs without logging the email or token.
+
+## Neon and SaaS deployment
+
+1. Create a Neon project and database. Use its pooled connection string for
+   `DATABASE_URL` and its direct connection string for
+   `DATABASE_URL_UNPOOLED`.
+2. Set both values as backend secrets in your host (never as
+   `VITE_DATABASE_URL`). It may use Neon’s `sslmode=require`; TaskFlow upgrades
+   it to `verify-full`. Set `APP_ENV=production`, a strong unique
+   `JWT_SECRET_KEY`, `APP_BASE_URL` to the trusted HTTPS frontend origin,
+   `CORS_ORIGINS` to that origin, and all `MAIL_*` values.
+3. Build/install the backend from `backend/`, run `alembic upgrade head` as a
+   deployment release step, and start `uvicorn app.main:app --host 0.0.0.0
+   --port $PORT` using the host's required port syntax.
+4. Set `VITE_API_BASE_URL` to the public HTTPS API URL before running
+   `npm run build` in `frontend/`; serve the generated `frontend/dist` files.
+5. Verify `/api/health`, registration/sign-in, password reset delivery, file
+   storage, and core task flows in the deployed environment.
+
+The current upload backend writes to `UPLOAD_STORAGE_DIR`; configure persistent
+storage for a single API instance, or add a shared/object-storage adapter before
+running multiple API replicas.
+
+This version models personal accounts and scopes normal user task, file, and
+chat access by authenticated user ID. It does not define shared workspaces,
+teams, or workspace membership; administrator endpoints intentionally provide
+cross-account administration. Add an explicit workspace/membership model and
+scope every tenant-facing query before offering shared multi-user workspaces.
+The current model therefore provides per-account isolation, not complete
+workspace-level multi-tenancy.
 
 ## Troubleshooting
 
-- **MySQL connection refused:** start the local MySQL service/control panel;
-  verify `Test-NetConnection 127.0.0.1 -Port 3306`; check `DB_HOST`, `DB_PORT`,
-  `DB_USER`, `DB_PASSWORD`, and that `taskflow_db` exists.
-- **Unknown database or missing tables:** create `taskflow_db` in phpMyAdmin
-  and run `alembic upgrade head` from `backend/`.
+- **PostgreSQL connection refused:** confirm the Neon endpoint and
+  `DATABASE_URL`, and verify the backend hosting region/network can reach it.
+- **Unknown database or missing tables:** verify the Neon database exists and
+  run `alembic upgrade head` from `backend/`.
 - **Port already in use:** stop the process using port 5173 or 8000, or change
   the port and update `CORS_ORIGINS` and `VITE_API_BASE_URL` together.
 - **Browser CORS error:** use the configured frontend origin consistently
@@ -538,6 +646,6 @@ reset the development database as a way to run tests; use
   conversational model. Administrators can manage global tasks but file
   search remains owner-only.
 - Production deployment needs HTTPS, a unique strong `JWT_SECRET_KEY`, secure
-  cookie configuration, private MySQL credentials, storage backup/access
+  cookie configuration, private database credentials, storage backup/access
   controls, and an explicitly reviewed CORS allowlist. The local development
   configuration is not a production deployment profile.

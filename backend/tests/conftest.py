@@ -4,7 +4,7 @@ from collections.abc import Generator
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.engine import URL
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import settings
@@ -13,28 +13,41 @@ from app.db.session import get_db
 from app.main import app
 from app.models import User  # noqa: F401
 
-TEST_DB_NAME = os.getenv("TASKFLOW_TEST_DB_NAME")
+TEST_DATABASE_URL = os.getenv("TASKFLOW_TEST_DATABASE_URL")
+
+
+def _same_database(first, second) -> bool:
+    return (
+        first.host,
+        first.port,
+        first.database,
+        first.username,
+    ) == (
+        second.host,
+        second.port,
+        second.database,
+        second.username,
+    )
 
 
 def _test_engine():
     if os.getenv("TASKFLOW_RUN_AUTH_TESTS") != "1":
         pytest.skip(
-            "Set TASKFLOW_RUN_AUTH_TESTS=1 to explicitly enable MySQL auth tests."
+            "Set TASKFLOW_RUN_AUTH_TESTS=1 to explicitly enable PostgreSQL integration tests."
         )
-    if not TEST_DB_NAME:
-        pytest.skip("Set TASKFLOW_TEST_DB_NAME to a dedicated test database.")
-    if TEST_DB_NAME == settings.db_name:
-        pytest.fail("The auth test database must not be the development database.")
-    url = URL.create(
-        "mysql+pymysql",
-        username=settings.db_user,
-        password=settings.db_password,
-        host=settings.db_host,
-        port=settings.db_port,
-        database=TEST_DB_NAME,
-        query={"charset": "utf8mb4"},
+    if not TEST_DATABASE_URL:
+        pytest.skip("Set TASKFLOW_TEST_DATABASE_URL to a dedicated PostgreSQL test database.")
+    test_url = make_url(TEST_DATABASE_URL)
+    if test_url.drivername not in {"postgresql", "postgresql+psycopg"}:
+        pytest.fail("The auth test database must use PostgreSQL.")
+    normalized_test_url = test_url.set(drivername="postgresql+psycopg")
+    if _same_database(normalized_test_url, settings.database_url):
+        pytest.fail("The auth test database must not be the application database.")
+    return create_engine(
+        normalized_test_url,
+        pool_pre_ping=True,
+        connect_args={"prepare_threshold": None, "connect_timeout": 10},
     )
-    return create_engine(url, pool_pre_ping=True)
 
 
 @pytest.fixture(scope="session")
@@ -53,7 +66,10 @@ def test_engine():
 
 @pytest.fixture()
 def db_session(test_engine) -> Generator[Session, None, None]:
-    if TEST_DB_NAME == settings.db_name:
+    if _same_database(
+        make_url(TEST_DATABASE_URL).set(drivername="postgresql+psycopg"),
+        settings.database_url,
+    ):
         pytest.fail("Refusing to alter the development database.")
     connection = test_engine.connect()
     transaction = connection.begin()
