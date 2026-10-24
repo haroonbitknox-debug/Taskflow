@@ -1,34 +1,61 @@
 import axios from 'axios'
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api',
+  baseURL: import.meta.env?.VITE_API_BASE_URL || 'http://localhost:8000/api',
   withCredentials: true,
   headers: {
     Accept: 'application/json',
   },
 })
 
-function readCsrfCookie() {
-  const csrfCookieName = 'taskflow_csrf'
-  const cookie = document.cookie
-    .split('; ')
-    .find((part) => part.startsWith(`${csrfCookieName}=`))
+let csrfToken = null
+let csrfTokenRequest = null
 
-  return cookie ? decodeURIComponent(cookie.slice(csrfCookieName.length + 1)) : null
+function storeCsrfToken(response) {
+  const token = response.data?.csrf_token
+  if (typeof token !== 'string' || !token) {
+    throw new Error('The CSRF endpoint did not return a token.')
+  }
+  csrfToken = token
+  return response
 }
 
-api.interceptors.request.use((config) => {
+function getCsrfToken() {
+  if (csrfToken) {
+    return Promise.resolve(csrfToken)
+  }
+  if (!csrfTokenRequest) {
+    csrfTokenRequest = api
+      .get('/auth/csrf')
+      .then((response) => {
+        storeCsrfToken(response)
+        return csrfToken
+      })
+      .finally(() => {
+        csrfTokenRequest = null
+      })
+  }
+  return csrfTokenRequest
+}
+
+api.interceptors.request.use(async (config) => {
   if (!['get', 'head', 'options'].includes(config.method?.toLowerCase() ?? 'get')) {
-    const csrfToken = readCsrfCookie()
-    if (csrfToken) {
-      config.headers.set('X-CSRF-Token', csrfToken)
-    }
+    config.headers.set('X-CSRF-Token', await getCsrfToken())
   }
   return config
 })
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (
+      response.config.url?.endsWith('/auth/login') ||
+      response.config.url?.endsWith('/auth/register')
+    ) {
+      csrfToken = null
+      csrfTokenRequest = null
+    }
+    return response
+  },
   (error) => {
     const url = error.config?.url ?? ''
     if (
@@ -47,7 +74,7 @@ export function getHealth() {
 }
 
 export const authApi = {
-  csrf: () => api.get('/auth/csrf'),
+  csrf: () => api.get('/auth/csrf').then(storeCsrfToken),
   login: (payload) => api.post('/auth/login', payload),
   register: (payload) => api.post('/auth/register', payload),
   requestPasswordReset: (payload) => api.post('/auth/password-reset/request', payload),

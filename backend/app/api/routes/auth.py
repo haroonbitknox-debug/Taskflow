@@ -53,7 +53,7 @@ def _set_auth_cookies(response: Response, user: User, csrf_token: str) -> None:
         max_age=settings.access_token_expire_minutes * 60,
         httponly=True,
         secure=settings.secure_cookies,
-        samesite="lax",
+        samesite="none" if settings.secure_cookies else "lax",
         path="/",
     )
     response.set_cookie(
@@ -62,7 +62,7 @@ def _set_auth_cookies(response: Response, user: User, csrf_token: str) -> None:
         max_age=settings.access_token_expire_minutes * 60,
         httponly=False,
         secure=settings.secure_cookies,
-        samesite="lax",
+        samesite="none" if settings.secure_cookies else "lax",
         path="/",
     )
 
@@ -72,14 +72,14 @@ def _clear_auth_cookies(response: Response) -> None:
         key=settings.auth_cookie_name,
         secure=settings.secure_cookies,
         httponly=True,
-        samesite="lax",
+        samesite="none" if settings.secure_cookies else "lax",
         path="/",
     )
     response.delete_cookie(
         key=settings.csrf_cookie_name,
         secure=settings.secure_cookies,
         httponly=False,
-        samesite="lax",
+        samesite="none" if settings.secure_cookies else "lax",
         path="/",
     )
 
@@ -93,7 +93,7 @@ def issue_csrf_token(response: Response) -> CsrfResponse:
         max_age=settings.access_token_expire_minutes * 60,
         httponly=False,
         secure=settings.secure_cookies,
-        samesite="lax",
+        samesite="none" if settings.secure_cookies else "lax",
         path="/",
     )
     return CsrfResponse(csrf_token=csrf_token)
