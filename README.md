@@ -286,6 +286,9 @@ and `GET /api/admin/dashboard/summary` for system-wide statistics. These
 endpoints enforce administrator authorization on the server and record
 administrative task and user mutations in `audit_logs`. The last active
 administrator cannot be demoted, deactivated, or deleted.
+The users response reports `registered_total`, `admin_total`, and
+`regular_user_total` independently of the search/filter/pagination result;
+`total` remains the number of matching accounts used to calculate pages.
 
 Deleting a user cascades their database-owned tasks, tags, uploaded-file
 metadata/index entries, conversations/messages, and other dependent records.
@@ -582,8 +585,11 @@ failures are recorded in backend logs without logging the email or token.
 3. Build/install the backend from `backend/`, run `alembic upgrade head` as a
    deployment release step, and start `uvicorn app.main:app --host 0.0.0.0
    --port $PORT` using the host's required port syntax.
-4. Set `VITE_API_BASE_URL` to the public HTTPS API URL before running
-   `npm run build` in `frontend/`; serve the generated `frontend/dist` files.
+4. Set `VITE_API_BASE_URL` in the frontend Vercel project to the public HTTPS
+   API URL ending in `/api` (for example, `https://<backend-domain>/api`) before
+   building. The frontend intentionally does not fall back to localhost in
+   production. Set the same value for Preview and Production as appropriate.
+   Deploy the generated frontend from `frontend/`.
 5. Verify `/api/health`, registration/sign-in, password reset delivery, file
    storage, and core task flows in the deployed environment.
 

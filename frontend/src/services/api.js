@@ -1,7 +1,14 @@
 import axios from 'axios'
 
+const apiBaseUrl = import.meta.env?.VITE_API_BASE_URL ||
+  (import.meta.env?.DEV ? 'http://localhost:8000/api' : null)
+
+if (!apiBaseUrl) {
+  throw new Error('VITE_API_BASE_URL must be set to the public API URL for production.')
+}
+
 const api = axios.create({
-  baseURL: import.meta.env?.VITE_API_BASE_URL || 'http://localhost:8000/api',
+  baseURL: apiBaseUrl,
   withCredentials: true,
   headers: {
     Accept: 'application/json',

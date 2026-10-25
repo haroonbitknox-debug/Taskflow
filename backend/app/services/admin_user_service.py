@@ -28,7 +28,9 @@ class UnsafeUploadPathError(Exception):
 UPLOADS_ROOT = Path(__file__).resolve().parents[2] / "uploads"
 
 
-def list_admin_users(db: Session, query: AdminUserQuery) -> tuple[list[User], int]:
+def list_admin_users(
+    db: Session, query: AdminUserQuery
+) -> tuple[list[User], int, int, int]:
     statement = select(User)
     if query.search:
         search = f"%{query.search.strip()}%"
@@ -42,12 +44,17 @@ def list_admin_users(db: Session, query: AdminUserQuery) -> tuple[list[User], in
     total = db.scalar(
         select(func.count()).select_from(statement.order_by(None).subquery())
     ) or 0
+    role_counts = dict(
+        db.execute(select(User.role, func.count(User.id)).group_by(User.role)).all()
+    )
     items = db.scalars(
         statement.order_by(User.created_at.desc(), User.id.asc())
         .offset((query.page - 1) * query.page_size)
         .limit(query.page_size)
     ).all()
-    return items, total
+    admin_total = role_counts.get(UserRole.ADMIN, 0)
+    regular_user_total = role_counts.get(UserRole.USER, 0)
+    return items, total, admin_total + regular_user_total, admin_total
 
 
 def create_admin_user(

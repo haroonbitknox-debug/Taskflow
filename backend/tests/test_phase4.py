@@ -226,7 +226,19 @@ def test_admin_user_management_and_last_admin_safeguard(
     listing = client.get("/api/admin/users?search=managed&role=user&is_active=true")
     assert listing.status_code == 200
     assert listing.json()["total"] == 1
+    assert listing.json()["registered_total"] == 2
+    assert listing.json()["admin_total"] == 1
+    assert listing.json()["regular_user_total"] == 1
     assert "password_hash" not in listing.json()["items"][0]
+    assert "password_hash" not in listing.json()
+
+    second_page = client.get("/api/admin/users?page=2&page_size=1")
+    assert second_page.status_code == 200
+    assert second_page.json()["total"] == 2
+    assert second_page.json()["registered_total"] == 2
+    assert second_page.json()["admin_total"] == 1
+    assert second_page.json()["regular_user_total"] == 1
+    assert len(second_page.json()["items"]) == 1
 
     details = client.get(f"/api/admin/users/{target['id']}")
     assert details.status_code == 200
@@ -272,6 +284,11 @@ def test_regular_user_cannot_access_admin_routes(client: TestClient) -> None:
     assert client.get("/api/admin/users").status_code == 403
     assert client.get("/api/admin/tasks").status_code == 403
     assert client.get("/api/admin/dashboard/summary").status_code == 403
+
+
+def test_admin_user_list_requires_authentication(client: TestClient) -> None:
+    response = client.get("/api/admin/users")
+    assert response.status_code == 401
 
 
 def test_admin_task_routes_and_audit_logs(

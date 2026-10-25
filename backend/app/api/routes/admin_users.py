@@ -47,9 +47,12 @@ def list_users(
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> AdminUserPage:
-    items, total = list_admin_users(db, filters)
+    items, total, registered_total, admin_total = list_admin_users(db, filters)
     return AdminUserPage(
         items=[AdminUserItem.model_validate(user) for user in items],
+        registered_total=registered_total,
+        admin_total=admin_total,
+        regular_user_total=registered_total - admin_total,
         total=total,
         page=filters.page,
         page_size=filters.page_size,

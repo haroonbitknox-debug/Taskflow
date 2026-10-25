@@ -79,6 +79,9 @@ class AdminUserItem(BaseModel):
 
 class AdminUserPage(BaseModel):
     items: list[AdminUserItem]
+    registered_total: int
+    admin_total: int
+    regular_user_total: int
     total: int
     page: int
     page_size: int
